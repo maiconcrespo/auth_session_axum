@@ -1,0 +1,16 @@
+[package]
+name = "auth_session"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+async-trait = "0.1.88"
+axum = "0.8.4"
+axum_session = "0.16.0"
+axum_session_auth = "0.16.0"
+axum_session_sqlx = { version = "0.5.0", features = ["sqlite", "tls-rustls"] }
+bcrypt = "0.17.0"
+serde = { version = "1.0.219", features = ["derive"] }
+sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio", "tls-native-tls"] }
+tokio = { version = "1.45.1", features = ["full"] }
