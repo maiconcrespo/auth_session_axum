@@ -1,11 +1,12 @@
+use async_trait::async_trait;
 use axum::{
     Router,
     routing::{get, post},
 };
 use axum_session::{Key, SessionConfig, SessionStore};
-use axum_session_auth::AuthSessionLayer;
+use axum_session_auth::{AuthConfig, AuthSessionLayer, Authentication};
 use axum_session_sqlx::SessionSqlitePool;
-use sqlx::{Executor, Pool, Sqlite, prelude::FromRow};
+use sqlx::{Executor, Pool, Sqlite, SqlitePool, prelude::FromRow};
 
 #[tokio::main]
 
@@ -59,14 +60,20 @@ async fn session(pool: Pool<Sqlite>) -> SessionStore<SessionSqlitePool> {
     session_store
 }
 
-fn app() -> Router {
+fn app(pool: Pool<Sqlite>, session_store: SessionStore<SessionSqlitePool>) -> Router {
+    let config = AuthConfig::<i64>::default().with_anonymous_user_id(Some(1));
     Router::new()
         .route("/", get(|| async { "Hello World!" }))
         .route("/register", post(register))
         .route("/login", post(login))
         .route("/logout", get(logout))
         .route("/protected", get(protected).route_layer(from_fn(auth)))
-        .layer(AuthSessionLayer::<User>::new(pool))
+        .layer(
+            AuthSessionLayer::<User, i64, SessionSqlitePool, SqlitePool>::new(Some(pool.clone()))
+                .with_config(config),
+        )
+        .layer(SessionLayer::new(session_store))
+        .with_state(pool)
 }
 
 #[derive(Clone)]
@@ -74,6 +81,30 @@ pub struct User {
     pub id: i64,
     pub anonymous: bool,
     pub username: String,
+}
+#[async_trait]
+impl Authentication<User, i64, SqlitePool> for User {
+    #[must_use]
+    #[allow(
+        elided_named_lifetimes,
+        clippy::type_complexity,
+        clippy::type_repetition_in_bounds
+    )]
+    async fn load_user(userid: i64, pool: Option<&SqlitePool>) -> Result<User, anyhow::Error> {
+        todo!()
+    }
+
+    fn is_authenticated(&self) -> bool {
+        todo!()
+    }
+
+    fn is_active(&self) -> bool {
+        todo!()
+    }
+
+    fn is_anonymous(&self) -> bool {
+        todo!()
+    }
 }
 
 #[derive(FromRow)]
