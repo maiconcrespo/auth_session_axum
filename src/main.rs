@@ -1,11 +1,15 @@
 use async_trait::async_trait;
 use axum::{
-    Router,
+    Json, Router,
+    extract::State,
+    http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
 };
-use axum_session::{Key, SessionConfig, SessionStore};
+use axum_session::{Key, SessionConfig, SessionLayer, SessionStore};
 use axum_session_auth::{AuthConfig, AuthSessionLayer, Authentication};
 use axum_session_sqlx::SessionSqlitePool;
+use serde::Deserialize;
 use sqlx::{Executor, Pool, Sqlite, SqlitePool, prelude::FromRow};
 
 #[tokio::main]
@@ -76,6 +80,37 @@ fn app(pool: Pool<Sqlite>, session_store: SessionStore<SessionSqlitePool>) -> Ro
         .with_state(pool)
 }
 
+async fn register(
+    State(pool): State<Pool<Sqlite>>,
+    Json(user): Json<UserRequest>,
+) -> impl IntoResponse {
+    let rows: Vec<UserSql> = sqlx::query_as("SELECT * FROM user WHERE username = ?1")
+        .bind(&user.username)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+    if rows.len() != 0 {
+        let msg = format!("Username:{} is already taken", user.username);
+        (StatusCode::BAD_REQUEST, msg).into_response()
+    } else {
+        let hash_password = bcrypt::hash(user.password, 10).unwrap();
+
+        sqlx::query("INSERT INTO user (username,password) VALUES (?1,?2)")
+            .bind(&user.username)
+            .bind(&hash_password)
+            .execute(&pool)
+            .await
+            .unwrap();
+        (StatusCode::OK, "Register sucssesfull!").into_response()
+    }
+}
+#[derive(Deserialize)]
+struct UserRequest {
+    username: String,
+    password: String,
+}
+
 #[derive(Clone)]
 pub struct User {
     pub id: i64,
@@ -91,19 +126,36 @@ impl Authentication<User, i64, SqlitePool> for User {
         clippy::type_repetition_in_bounds
     )]
     async fn load_user(userid: i64, pool: Option<&SqlitePool>) -> Result<User, anyhow::Error> {
-        todo!()
+        if userid == 1 {
+            Ok(User {
+                id: userid,
+                anonymous: true,
+                username: "guest".to_string(),
+            })
+        } else {
+            let user: UserSql = sqlx::query_as("SELECT * FROM user WHERE id =?1")
+                .bind(&userid)
+                .fetch_one(pool.unwrap())
+                .await
+                .unwrap();
+            Ok(User {
+                id: user.id as i64,
+                anonymous: false,
+                username: user.username,
+            })
+        }
     }
 
     fn is_authenticated(&self) -> bool {
-        todo!()
+        !self.anonymous
     }
 
     fn is_active(&self) -> bool {
-        todo!()
+        !self.anonymous
     }
 
     fn is_anonymous(&self) -> bool {
-        todo!()
+        self.anonymous
     }
 }
 
