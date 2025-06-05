@@ -7,7 +7,7 @@ use axum::{
     routing::{get, post},
 };
 use axum_session::{Key, SessionConfig, SessionLayer, SessionStore};
-use axum_session_auth::{AuthConfig, AuthSessionLayer, Authentication};
+use axum_session_auth::{AuthConfig, AuthSession, AuthSessionLayer, Authentication};
 use axum_session_sqlx::SessionSqlitePool;
 use serde::Deserialize;
 use sqlx::{Executor, Pool, Sqlite, SqlitePool, prelude::FromRow};
@@ -105,6 +105,37 @@ async fn register(
         (StatusCode::OK, "Register sucssesfull!").into_response()
     }
 }
+
+async fn login(
+    auth: AuthSession<User, i64, SessionSqlitePool, SqlitePool>,
+    State(pool): State<Pool<Sqlite>>,
+    Json(user): Json<UserRequest>,
+) -> impl IntoResponse {
+    let rows: Vec<UserSql> = sqlx::query_as("SELECT * FROM user WHERE username = ?1")
+        .bind(&user.username)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    if rows.len() == 0 {
+        let msg = format!("Username:{} is not found", user.username);
+        return (StatusCode::BAD_REQUEST, msg).into_response();
+    } else {
+        let is_valid = bcrypt::verify(user.password, &rows[0].password).unwrap();
+
+        if is_valid {
+            auth.login_user(rows[0].id as i64);
+            (StatusCode::OK, "Login successfull").into_response()
+        } else {
+            (StatusCode::BAD_REQUEST, "Invalid password").into_response()
+        }
+    }
+}
+
+async fn log_out(auth: AuthSession<User, i64, SessionSqlitePool, SqlitePool>) -> impl IntoResponse {
+    auth.logout_user();
+    (StatusCode::OK, "Logout successfull").into_response()
+}
+
 #[derive(Deserialize)]
 struct UserRequest {
     username: String,
